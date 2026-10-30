@@ -95,6 +95,12 @@ private fun FocusLockScreen() {
                 }
             }
             Spacer(Modifier.height(14.dp))
+            if (apps.isEmpty()) {
+                Text("مش لاقيين تطبيقات ظاهرة في قائمة التطبيقات. جرّب إعادة فتح التطبيق بعد التحديث.", color=Color(0xFFFFC779), fontSize=13.sp)
+            }
+            if (selected.isEmpty()) {
+                Text("اختار تطبيقًا واحدًا على الأقل قبل بدء الجلسة.", color=Color(0xFFFFC779), fontSize=12.sp)
+            }
             LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.weight(1f)) {
                 items(apps, key = { it.packageName }) { app ->
                     Row(Modifier.fillMaxWidth().background(panel, RoundedCornerShape(14.dp)).padding(horizontal = 12.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -118,4 +124,4 @@ private fun FocusLockScreen() {
     }
 }
 
-private fun isServiceEnabled(context: android.content.Context): Boolean { val expected=ComponentName(context,FocusAccessibilityService::class.java).flattenToString(); val enabled=Settings.Secure.getString(context.contentResolver,Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false; return enabled.split(":").any { it.equals(expected,true) } }
+private fun isServiceEnabled(context: android.content.Context): Boolean { val component=ComponentName(context,FocusAccessibilityService::class.java); val expected=component.flattenToString(); val short=component.flattenToShortString(); val enabled=Settings.Secure.getString(context.contentResolver,Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false; return enabled.split(":").any { it.equals(expected,true) || it.equals(short,true) } }

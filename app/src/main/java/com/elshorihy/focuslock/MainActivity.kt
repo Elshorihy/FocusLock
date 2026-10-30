@@ -118,4 +118,4 @@ private fun FocusLockScreen() {
     }
 }
 
-private fun isServiceEnabled(context: android.content.Context): Boolean { val expected=ComponentName(context,FocusAccessibilityService::class.java).flattenToString(); val enabled=Settings.Secure.getString(context.contentResolver,Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false; return enabled.split(String.fromCharCode(58)).any { it.equals(expected,true) } }
+private fun isServiceEnabled(context: android.content.Context): Boolean { val expected=ComponentName(context,FocusAccessibilityService::class.java).flattenToString(); val enabled=Settings.Secure.getString(context.contentResolver,Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false; return enabled.split(":").any { it.equals(expected,true) } }

@@ -1,6 +1,9 @@
 package com.elshorihy.focuslock
 
 import android.content.Intent
+import android.content.ComponentName
+import android.graphics.drawable.Drawable
+import android.widget.ImageView
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
@@ -19,8 +22,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import kotlinx.coroutines.delay
 
-private data class LaunchableApp(val label: String, val packageName: String)
+private data class LaunchableApp(val label: String, val packageName: String, val icon: Drawable)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -35,10 +40,15 @@ private fun FocusLockScreen() {
     val prefs = remember { context.getSharedPreferences("focuslock", 0) }
     var enabled by remember { mutableStateOf(prefs.getBoolean("blocking_enabled", false)) }
     var selected by remember { mutableStateOf(prefs.getStringSet("blocked_apps", emptySet())?.toSet() ?: emptySet()) }
+    var minutes by remember { mutableIntStateOf(25) }
+    var endAt by remember { mutableLongStateOf(prefs.getLong("session_end", 0L)) }
+    var remaining by remember { mutableLongStateOf(((endAt-System.currentTimeMillis()).coerceAtLeast(0L))/1000L) }
+    var serviceReady by remember { mutableStateOf(isServiceEnabled(context)) }
+    LaunchedEffect(endAt) { while(endAt>0L && System.currentTimeMillis()<endAt) { remaining=((endAt-System.currentTimeMillis()).coerceAtLeast(0L))/1000L; delay(1000) }; if(endAt>0L) { prefs.edit().putLong("session_end",0L).putBoolean("blocking_enabled",false).apply(); endAt=0L } }
     val apps = remember {
         val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
         context.packageManager.queryIntentActivities(launchIntent, 0)
-            .map { LaunchableApp(it.loadLabel(context.packageManager).toString(), it.activityInfo.packageName) }
+            .mapNotNull { info -> runCatching { LaunchableApp(info.loadLabel(context.packageManager).toString(), info.activityInfo.packageName, context.packageManager.getApplicationIcon(info.activityInfo.packageName)) }.getOrNull() }
             .filter { it.packageName != context.packageName }
             .distinctBy { it.packageName }.sortedBy { it.label.lowercase() }
     }
@@ -79,6 +89,8 @@ private fun FocusLockScreen() {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.weight(1f)) {
                 items(apps, key = { it.packageName }) { app ->
                     Row(Modifier.fillMaxWidth().background(panel, RoundedCornerShape(14.dp)).padding(horizontal = 12.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                        AndroidView(factory={ ImageView(it).apply { setImageDrawable(app.icon); scaleType=ImageView.ScaleType.FIT_CENTER } },modifier=Modifier.size(34.dp))
+                        Spacer(Modifier.width(10.dp))
                         Text(app.label, color = Color.White, modifier = Modifier.weight(1f))
                         Checkbox(checked = app.packageName in selected, onCheckedChange = { checked ->
                             selected = if (checked) selected + app.packageName else selected - app.packageName
@@ -87,6 +99,7 @@ private fun FocusLockScreen() {
                     }
                 }
             }
+            Text("تم تطوير بواسطة حمزة شاهين", color=Color(0xFF78849A), fontSize=11.sp, modifier=Modifier.align(Alignment.CenterHorizontally))
             TextButton(onClick = {
                 enabled = false
                 prefs.edit().putBoolean("blocking_enabled", false).putLong("pause_until", 0L).apply()
@@ -95,3 +108,5 @@ private fun FocusLockScreen() {
         }
     }
 }
+
+private fun isServiceEnabled(context: android.content.Context): Boolean { val expected=ComponentName(context,FocusAccessibilityService::class.java).flattenToString(); val enabled=Settings.Secure.getString(context.contentResolver,Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false; return enabled.split(String.fromCharCode(58)).any { it.equals(expected,true) } }

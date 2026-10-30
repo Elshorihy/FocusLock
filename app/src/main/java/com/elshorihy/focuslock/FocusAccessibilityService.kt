@@ -17,6 +17,7 @@ class FocusAccessibilityService : AccessibilityService() {
         val endAt = prefs.getLong("session_end", 0L)
         val active = endAt > System.currentTimeMillis()
         if (!active || !prefs.getBoolean("blocking_enabled", false)) return
+        if (prefs.getLong("pause_until", 0L) > System.currentTimeMillis()) return
         val blocked = prefs.getStringSet("blocked_apps", emptySet()) ?: emptySet()
         if (pkg !in blocked) return
         val now = SystemClock.elapsedRealtime()

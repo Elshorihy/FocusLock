@@ -86,6 +86,15 @@ private fun FocusLockScreen() {
                 Text("${selected.size} محدد", color = Color(0xFF9BAAFF))
             }
             Spacer(Modifier.height(8.dp))
+            Card(colors=CardDefaults.cardColors(containerColor=panel),shape=RoundedCornerShape(22.dp)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                    Text("جلسة التركيز",color=Color.White,fontSize=18.sp,fontWeight=FontWeight.Bold)
+                    Text(if(endAt>0L) String.format("%02d:%02d",remaining/60,remaining%60) else String.format("%02d:00",minutes),color=Color.White,fontSize=38.sp,fontWeight=FontWeight.Bold)
+                    Row { listOf(25,50,90).forEach { m -> FilterChip(selected=minutes==m && endAt==0L,onClick={minutes=m},enabled=endAt==0L,label={Text("$m دقيقة")}) } }
+                    Button(onClick={ serviceReady=isServiceEnabled(context); if(!serviceReady) context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) else if(endAt>0L) { endAt=0L; enabled=false; prefs.edit().putLong("session_end",0L).putBoolean("blocking_enabled",false).apply() } else if(selected.isNotEmpty()) { endAt=System.currentTimeMillis()+minutes*60000L; enabled=true; prefs.edit().putLong("session_end",endAt).putBoolean("blocking_enabled",true).putStringSet("blocked_apps",selected).apply() } },modifier=Modifier.fillMaxWidth()) { Text(if(endAt>0L) "إنهاء الجلسة" else if(!serviceReady) "تفعيل خدمة الحجب" else "ابدأ جلسة التركيز") }
+                }
+            }
+            Spacer(Modifier.height(14.dp))
             LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.weight(1f)) {
                 items(apps, key = { it.packageName }) { app ->
                     Row(Modifier.fillMaxWidth().background(panel, RoundedCornerShape(14.dp)).padding(horizontal = 12.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {

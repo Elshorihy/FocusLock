@@ -2,6 +2,7 @@ package com.elshorihy.focuslock
 
 import android.content.Intent
 import android.content.ComponentName
+import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
 import android.widget.ImageView
 import android.os.Bundle
@@ -46,11 +47,17 @@ private fun FocusLockScreen() {
     var serviceReady by remember { mutableStateOf(isServiceEnabled(context)) }
     LaunchedEffect(endAt) { while(endAt>0L && System.currentTimeMillis()<endAt) { remaining=((endAt-System.currentTimeMillis()).coerceAtLeast(0L))/1000L; delay(1000) }; if(endAt>0L) { prefs.edit().putLong("session_end",0L).putBoolean("blocking_enabled",false).apply(); endAt=0L } }
     val apps = remember {
-        val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        context.packageManager.queryIntentActivities(launchIntent, 0)
-            .mapNotNull { info -> runCatching { LaunchableApp(info.loadLabel(context.packageManager).toString(), info.activityInfo.packageName, context.packageManager.getApplicationIcon(info.activityInfo.packageName)) }.getOrNull() }
-            .filter { it.packageName != context.packageName }
-            .distinctBy { it.packageName }.sortedBy { it.label.lowercase() }
+        val pm = context.packageManager
+        pm.getInstalledApplications(PackageManager.GET_META_DATA)
+            .mapNotNull { appInfo -> runCatching {
+                val launchIntent = pm.getLaunchIntentForPackage(appInfo.packageName) ?: return@runCatching null
+                if (appInfo.packageName == context.packageName) return@runCatching null
+                val label = pm.getApplicationLabel(appInfo).toString()
+                LaunchableApp(label, appInfo.packageName, pm.getApplicationIcon(appInfo.packageName))
+            }.getOrNull() }
+            .filterNotNull()
+            .distinctBy { it.packageName }
+            .sortedBy { it.label.lowercase() }
     }
     val bg = Color(0xFF0B1020)
     val panel = Color(0xFF151D32)

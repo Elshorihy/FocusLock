@@ -66,15 +66,38 @@ private fun FocusLockScreen() {
     val apps = remember(refreshKey) {
         val pm = context.packageManager
         val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        pm.queryIntentActivities(launcherIntent, PackageManager.MATCH_ALL)
-            .mapNotNull { resolveInfo ->
-                val activityInfo = resolveInfo.activityInfo ?: return@mapNotNull null
-                val packageName = activityInfo.packageName
-                if (packageName == context.packageName) return@mapNotNull null
-                runCatching {
-                    LaunchableApp(resolveInfo.loadLabel(pm).toString(), packageName, resolveInfo.loadIcon(pm))
-                }.getOrNull()
-            }
+        val resolved = runCatching {
+            pm.queryIntentActivities(launcherIntent, PackageManager.MATCH_ALL or PackageManager.MATCH_DISABLED_COMPONENTS)
+        }.getOrDefault(emptyList())
+        val fromLauncherQuery = resolved.mapNotNull { info ->
+            val appInfo = info.activityInfo?.applicationInfo ?: return@mapNotNull null
+            if (appInfo.packageName == context.packageName) return@mapNotNull null
+            runCatching {
+                LaunchableApp(
+                    info.loadLabel(pm).toString(),
+                    appInfo.packageName,
+                    info.loadIcon(pm)
+                )
+            }.getOrNull()
+        }
+        // Fallback: enumerate visible installed packages, then retain only apps with a launcher entry.
+        val fromInstalledPackages = if (fromLauncherQuery.isNotEmpty()) emptyList() else {
+            runCatching {
+                pm.getInstalledApplications(PackageManager.MATCH_ALL).mapNotNull { appInfo ->
+                    if (appInfo.packageName == context.packageName) return@mapNotNull null
+                    val launchIntentForApp = pm.getLaunchIntentForPackage(appInfo.packageName)
+                        ?: return@mapNotNull null
+                    runCatching {
+                        LaunchableApp(
+                            pm.getApplicationLabel(appInfo).toString(),
+                            appInfo.packageName,
+                            pm.getApplicationIcon(appInfo)
+                        )
+                    }.getOrNull()
+                }
+            }.getOrDefault(emptyList())
+        }
+        (fromLauncherQuery + fromInstalledPackages)
             .distinctBy { it.packageName }
             .sortedBy { it.label.lowercase() }
     }

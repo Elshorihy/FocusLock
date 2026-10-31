@@ -55,6 +55,14 @@ private fun FocusLockScreen() {
     var serviceReady by remember { mutableStateOf(isServiceEnabled(context)) }
     LaunchedEffect(endAt) { while(endAt>0L && System.currentTimeMillis()<endAt) { remaining=((endAt-System.currentTimeMillis()).coerceAtLeast(0L))/1000L; delay(1000) }; if(endAt>0L) { prefs.edit().putLong("session_end",0L).putBoolean("blocking_enabled",false).apply(); endAt=0L } }
     val refreshKey = (context as? MainActivity)?.appsRefreshKey ?: 0
+    val appDiagnostics = remember(refreshKey) {
+        val pm = context.packageManager
+        val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val launcherCount = runCatching { pm.queryIntentActivities(launcherIntent, PackageManager.MATCH_ALL).size }.getOrElse { -1 }
+        val installedCount = runCatching { pm.getInstalledApplications(PackageManager.MATCH_ALL).size }.getOrElse { -1 }
+        val packageCount = runCatching { pm.getInstalledPackages(PackageManager.MATCH_ALL).size }.getOrElse { -1 }
+        Triple(launcherCount, installedCount, packageCount)
+    }
     val apps = remember(refreshKey) {
         val pm = context.packageManager
         val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
@@ -64,11 +72,7 @@ private fun FocusLockScreen() {
                 val packageName = activityInfo.packageName
                 if (packageName == context.packageName) return@mapNotNull null
                 runCatching {
-                    LaunchableApp(
-                        resolveInfo.loadLabel(pm).toString(),
-                        packageName,
-                        resolveInfo.loadIcon(pm)
-                    )
+                    LaunchableApp(resolveInfo.loadLabel(pm).toString(), packageName, resolveInfo.loadIcon(pm))
                 }.getOrNull()
             }
             .distinctBy { it.packageName }
@@ -118,22 +122,25 @@ private fun FocusLockScreen() {
             }
             Spacer(Modifier.height(14.dp))
             if (apps.isEmpty()) {
-                Text("شاومي ممكن يكون مانع FocusLock من قراءة قائمة التطبيقات. افتح الإعداد التالي واسمح بإذن «الحصول على قائمة التطبيقات / Get app list»، ثم ارجع للتطبيق.", color=Color(0xFFFFC779), fontSize=13.sp)
-                OutlinedButton(
-                    onClick = {
-                        val miuiIntent = Intent("miui.intent.action.APP_PERM_EDITOR")
-                            .putExtra("extra_pkgname", context.packageName)
-                        try {
-                            context.startActivity(miuiIntent)
-                        } catch (_: Exception) {
-                            context.startActivity(
-                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                                    .setData(Uri.parse("package:${context.packageName}"))
-                            )
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("السماح بعرض التطبيقات") }
+                Card(colors = CardDefaults.cardColors(containerColor = panel), shape = RoundedCornerShape(16.dp)) {
+                    Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                        Text("تشخيص قائمة التطبيقات", color = Color(0xFFFFC779), fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(6.dp))
+                        Text("تطبيقات التشغيل: ${appDiagnostics.first}", color = Color.White, fontSize = 13.sp)
+                        Text("الحزم المثبتة: ${appDiagnostics.second}", color = Color.White, fontSize = 13.sp)
+                        Text("كل الحزم: ${appDiagnostics.third}", color = Color.White, fontSize = 13.sp)
+                        Spacer(Modifier.height(6.dp))
+                        Text("الأرقام دي هتحدد هل أندرويد مخفي التطبيقات عن التطبيق ولا المشكلة في فلتر القائمة.", color = Color.LightGray, fontSize = 12.sp)
+                        OutlinedButton(onClick = {
+                            val details = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))
+                            context.startActivity(details)
+                        }, modifier = Modifier.fillMaxWidth()) { Text("فتح معلومات FocusLock") }
+                        OutlinedButton(onClick = {
+                            context.startActivity(Intent(Settings.ACTION_MANAGE_APPLICATIONS_SETTINGS))
+                        }, modifier = Modifier.fillMaxWidth()) { Text("فتح إعدادات التطبيقات") }
+                        TextButton(onClick = { (context as? MainActivity)?.appsRefreshKey = (context as? MainActivity)?.appsRefreshKey?.plus(1) ?: 0 }, modifier = Modifier.fillMaxWidth()) { Text("إعادة فحص القائمة") }
+                    }
+                }
             }
             if (selected.isEmpty()) {
                 Text("اختار تطبيقًا واحدًا على الأقل قبل بدء الجلسة.", color=Color(0xFFFFC779), fontSize=12.sp)

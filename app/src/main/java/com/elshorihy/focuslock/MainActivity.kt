@@ -3,6 +3,7 @@ package com.elshorihy.focuslock
 import android.content.Intent
 import android.content.ComponentName
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.graphics.drawable.Drawable
 import android.widget.ImageView
 import android.os.Bundle
@@ -29,9 +30,16 @@ import kotlinx.coroutines.delay
 private data class LaunchableApp(val label: String, val packageName: String, val icon: Drawable)
 
 class MainActivity : ComponentActivity() {
+    var appsRefreshKey by mutableIntStateOf(0)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent { FocusLockScreen() }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        appsRefreshKey++
     }
 }
 
@@ -46,16 +54,23 @@ private fun FocusLockScreen() {
     var remaining by remember { mutableLongStateOf(((endAt-System.currentTimeMillis()).coerceAtLeast(0L))/1000L) }
     var serviceReady by remember { mutableStateOf(isServiceEnabled(context)) }
     LaunchedEffect(endAt) { while(endAt>0L && System.currentTimeMillis()<endAt) { remaining=((endAt-System.currentTimeMillis()).coerceAtLeast(0L))/1000L; delay(1000) }; if(endAt>0L) { prefs.edit().putLong("session_end",0L).putBoolean("blocking_enabled",false).apply(); endAt=0L } }
-    val apps = remember {
+    val refreshKey = (context as? MainActivity)?.appsRefreshKey ?: 0
+    val apps = remember(refreshKey) {
         val pm = context.packageManager
-        pm.getInstalledApplications(PackageManager.GET_META_DATA)
-            .mapNotNull { appInfo -> runCatching {
-                val launchIntent = pm.getLaunchIntentForPackage(appInfo.packageName) ?: return@runCatching null
-                if (appInfo.packageName == context.packageName) return@runCatching null
-                val label = pm.getApplicationLabel(appInfo).toString()
-                LaunchableApp(label, appInfo.packageName, pm.getApplicationIcon(appInfo.packageName))
-            }.getOrNull() }
-            .filterNotNull()
+        val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        pm.queryIntentActivities(launcherIntent, PackageManager.MATCH_ALL)
+            .mapNotNull { resolveInfo ->
+                val activityInfo = resolveInfo.activityInfo ?: return@mapNotNull null
+                val packageName = activityInfo.packageName
+                if (packageName == context.packageName) return@mapNotNull null
+                runCatching {
+                    LaunchableApp(
+                        resolveInfo.loadLabel(pm).toString(),
+                        packageName,
+                        resolveInfo.loadIcon(pm)
+                    )
+                }.getOrNull()
+            }
             .distinctBy { it.packageName }
             .sortedBy { it.label.lowercase() }
     }
@@ -103,7 +118,22 @@ private fun FocusLockScreen() {
             }
             Spacer(Modifier.height(14.dp))
             if (apps.isEmpty()) {
-                Text("مش لاقيين تطبيقات ظاهرة في قائمة التطبيقات. جرّب إعادة فتح التطبيق بعد التحديث.", color=Color(0xFFFFC779), fontSize=13.sp)
+                Text("شاومي ممكن يكون مانع FocusLock من قراءة قائمة التطبيقات. افتح الإعداد التالي واسمح بإذن «الحصول على قائمة التطبيقات / Get app list»، ثم ارجع للتطبيق.", color=Color(0xFFFFC779), fontSize=13.sp)
+                OutlinedButton(
+                    onClick = {
+                        val miuiIntent = Intent("miui.intent.action.APP_PERM_EDITOR")
+                            .putExtra("extra_pkgname", context.packageName)
+                        try {
+                            context.startActivity(miuiIntent)
+                        } catch (_: Exception) {
+                            context.startActivity(
+                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                                    .setData(Uri.parse("package:${context.packageName}"))
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("السماح بعرض التطبيقات") }
             }
             if (selected.isEmpty()) {
                 Text("اختار تطبيقًا واحدًا على الأقل قبل بدء الجلسة.", color=Color(0xFFFFC779), fontSize=12.sp)
